@@ -55,7 +55,7 @@ const httpServer = createServer(app);
 // Set up WebSocket server.
 const wsServer = new WebSocketServer({
   server: httpServer,
-  path: '/graphql',
+  path: '/ws',
 });
 const serverCleanup = useServer({ schema }, wsServer);
 
@@ -85,7 +85,7 @@ app.use('/graphql', cors<cors.CorsRequest>(), bodyParser.json(), expressMiddlewa
 // Now that our HTTP server is fully set up, actually listen.
 httpServer.listen(PORT, () => {
   console.log(`🚀 Query endpoint ready at http://localhost:${PORT}/graphql`);
-  console.log(`🚀 Subscription endpoint ready at ws://localhost:${PORT}/graphql`);
+  console.log(`🚀 Subscription endpoint ready at ws://localhost:${PORT}/ws`);
 });
 
 // In the background, increment a number every second and notify subscribers when it changes.
