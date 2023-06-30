@@ -6,14 +6,12 @@ import { createServer } from 'http';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { WebSocketServer } from 'ws';
 import { useServer } from 'graphql-ws/lib/use/ws';
-import { PubSub } from 'graphql-subscriptions';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import gql from 'graphql-tag';
 import { buildSubgraphSchema } from '@apollo/subgraph';
 
 const PORT = 4000;
-const pubsub = new PubSub();
 
 // A number that we'll increment over time to simulate subscription events
 let currentNumber = 0;
@@ -38,7 +36,14 @@ const resolvers = {
   },
   Subscription: {
     numberIncremented: {
-      subscribe: () => pubsub.asyncIterator(['NUMBER_INCREMENTED']),
+      subscribe: async function* () {
+        let count = 0;
+        while (true) {
+          yield { numberIncremented: count++ };
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          if (count === 1000) count = 0;
+        }
+      },
     },
   },
 };
@@ -55,13 +60,15 @@ const httpServer = createServer(app);
 // Set up WebSocket server.
 const wsServer = new WebSocketServer({
   server: httpServer,
-  path: '/graphql/ws',
+  path: '/ws',
 });
 const serverCleanup = useServer({ schema }, wsServer);
 
 // Set up ApolloServer.
 const server = new ApolloServer({
   schema: buildSubgraphSchema({ typeDefs, resolvers}),
+  // Introspection for GraphOS to grab the schema
+  introspection: true,
   plugins: [
     // Proper shutdown for the HTTP server.
     ApolloServerPluginDrainHttpServer({ httpServer }),
@@ -80,23 +87,9 @@ const server = new ApolloServer({
 });
 
 await server.start();
-app.use('/graphql', cors<cors.CorsRequest>(), bodyParser.json(), expressMiddleware(server));
+app.use('/', cors(), bodyParser.json(), expressMiddleware(server));
 
 // Now that our HTTP server is fully set up, actually listen.
 httpServer.listen(PORT, () => {
-  console.log(`🚀 Query endpoint ready at http://localhost:${PORT}/graphql`);
-  console.log(`🚀 Subscription endpoint ready at ws://localhost:${PORT}/ws`);
+  console.log(`🚀 CurrentNumber subgraph ready at http://localhost:${PORT}/`);
 });
-
-// In the background, increment a number every second and notify subscribers when it changes.
-function incrementNumber() {
-  currentNumber++;
-  if (currentNumber >= 1000) {
-    currentNumber = 0;
-  }
-  pubsub.publish('NUMBER_INCREMENTED', { numberIncremented: currentNumber });
-  setTimeout(incrementNumber, 1000);
-}
-
-// Start incrementing
-incrementNumber();
